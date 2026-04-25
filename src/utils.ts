@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readlinkSync } from "node:fs";
 import { join } from "node:path";
 import { PROFILES_DIR, LIBRARY_DIR, BASE_DIR } from "./constants";
 import { execSync } from "node:child_process";
@@ -15,8 +15,13 @@ export interface ProfileConfig {
   skills: string[];
 }
 
-export async function readProfile(name: string): Promise<ProfileConfig | null> {
-  const profileFile = join(PROFILES_DIR, `${name}.json`);
+export function getProfileDir(id: string): string {
+  return join(PROFILES_DIR, id);
+}
+
+export async function readProfile(id: string): Promise<ProfileConfig | null> {
+  const profileDir = getProfileDir(id);
+  const profileFile = join(profileDir, `${id}.json`);
   if (!existsSync(profileFile)) {
     return null;
   }
@@ -24,16 +29,79 @@ export async function readProfile(name: string): Promise<ProfileConfig | null> {
   return JSON.parse(content);
 }
 
-export async function writeProfile(name: string, config: ProfileConfig) {
-  await ensureDir(PROFILES_DIR);
-  const profileFile = join(PROFILES_DIR, `${name}.json`);
+async function createSymlink(target: string, link: string) {
+  if (!existsSync(target)) return;
+
+  if (existsSync(link)) {
+    try {
+      const existingTarget = readlinkSync(link);
+      if (existingTarget === target) return;
+      await fs.unlink(link);
+    } catch {
+      await fs.rm(link, { recursive: true, force: true });
+    }
+  }
+  await fs.symlink(target, link);
+}
+
+export async function syncProfileSymlinks(id: string, config: ProfileConfig) {
+  const profileDir = getProfileDir(id);
+  const skillsDir = join(profileDir, "skills");
+  await ensureDir(skillsDir);
+
+  // 1. Get current symlinks
+  const currentFiles = existsSync(skillsDir) ? await fs.readdir(skillsDir) : [];
+
+  // 2. Identify what should be there
+  const expectedFiles = new Set<string>();
+  for (const skillId of config.skills) {
+    expectedFiles.add(skillId);
+    const skillPath = join(LIBRARY_DIR, skillId);
+    if (existsSync(skillPath)) {
+      const stats = await fs.stat(skillPath);
+      if (!stats.isDirectory()) {
+        const mdFile = `${skillId.replace(/\.[^/.]+$/, "")}.md`;
+        if (existsSync(join(LIBRARY_DIR, mdFile))) {
+          expectedFiles.add(mdFile);
+        }
+      }
+    }
+  }
+
+  // 3. Remove files not expected
+  for (const file of currentFiles) {
+    if (!expectedFiles.has(file)) {
+      await fs.unlink(join(skillsDir, file));
+    }
+  }
+
+  // 4. Create/Sync symlinks
+  for (const file of expectedFiles) {
+    await createSymlink(join(LIBRARY_DIR, file), join(skillsDir, file));
+  }
+}
+
+export async function writeProfile(id: string, config: ProfileConfig) {
+  const profileDir = getProfileDir(id);
+  await ensureDir(profileDir);
+  const profileFile = join(profileDir, `${id}.json`);
   await fs.writeFile(profileFile, JSON.stringify(config, null, 2));
+  await syncProfileSymlinks(id, config);
 }
 
 export async function listProfiles(): Promise<string[]> {
   if (!existsSync(PROFILES_DIR)) return [];
-  const files = await fs.readdir(PROFILES_DIR);
-  return files.filter((f) => f.endsWith(".json")).map((f) => f.replace(".json", ""));
+  const entries = await fs.readdir(PROFILES_DIR, { withFileTypes: true });
+  const profiles: string[] = [];
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      const profileFile = join(PROFILES_DIR, entry.name, `${entry.name}.json`);
+      if (existsSync(profileFile)) {
+        profiles.push(entry.name);
+      }
+    }
+  }
+  return profiles;
 }
 
 export async function installSkill(source: string) {
@@ -83,4 +151,81 @@ export async function resolveSkill(skillId: string): Promise<string | null> {
   }
 
   return null;
+}
+
+export async function deleteProfile(id: string) {
+  const profileDir = getProfileDir(id);
+  if (existsSync(profileDir)) {
+    await fs.rm(profileDir, { recursive: true, force: true });
+  }
+}
+
+export async function deleteSkill(skillId: string) {
+  const skillPath = join(LIBRARY_DIR, skillId);
+  if (existsSync(skillPath)) {
+    await fs.rm(skillPath, { recursive: true, force: true });
+  }
+}
+
+export async function getSkillMetadata(
+  skillId: string,
+  profileId?: string
+): Promise<{
+  name: string;
+  description: string;
+  location: string;
+} | null> {
+  const skillPath = join(LIBRARY_DIR, skillId);
+  if (!existsSync(skillPath)) return null;
+
+  const stats = await fs.stat(skillPath);
+  const skillMdPathInLibrary = stats.isDirectory()
+    ? join(skillPath, "SKILL.md")
+    : join(LIBRARY_DIR, `${skillId.replace(/\.[^/.]+$/, "")}.md`);
+
+  let description = "No description available.";
+  if (existsSync(skillMdPathInLibrary)) {
+    const content = await fs.readFile(skillMdPathInLibrary, "utf-8");
+
+    // 1. Try to extract <description>...</description>
+    const tagMatch = content.match(/<description>([\s\S]*?)<\/description>/);
+    if (tagMatch && tagMatch[1]) {
+      description = tagMatch[1].trim();
+    } else {
+      // 2. Try to extract from YAML frontmatter (description: ...)
+      const yamlMatch = content.match(/^---\s*[\s\S]*?^description:\s*(.+)$\s*[\s\S]*?^---/m);
+      if (yamlMatch && yamlMatch[1]) {
+        description = yamlMatch[1].trim();
+      } else {
+        // 3. Fallback: first non-empty line that isn't a heading or separator
+        const lines = content
+          .split("\n")
+          .map((l) => l.trim())
+          .filter((l) => l.length > 0 && !l.startsWith("#") && !l.startsWith("---"));
+        if (lines[0]) {
+          description = lines[0];
+        }
+      }
+    }
+  }
+
+  let location = skillMdPathInLibrary;
+  if (profileId) {
+    const profileSkillsDir = join(getProfileDir(profileId), "skills");
+    const skillPathInProfile = join(profileSkillsDir, skillId);
+
+    if (stats.isDirectory()) {
+      location = join(skillPathInProfile, "SKILL.md");
+    } else {
+      const mdFile = `${skillId.replace(/\.[^/.]+$/, "")}.md`;
+      const mdPathInProfile = join(profileSkillsDir, mdFile);
+      location = existsSync(mdPathInProfile) ? mdPathInProfile : skillPathInProfile;
+    }
+  }
+
+  return {
+    name: skillId.replace(/\.[^/.]+$/, ""), // name without extension
+    description,
+    location,
+  };
 }
