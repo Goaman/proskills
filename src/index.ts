@@ -77,7 +77,7 @@ async function outputSkillsXml(id?: string) {
 program
   .name("proskills")
   .description("Manage agent skill profiles by centralizing them in a library")
-  .version("0.0.2")
+  .version("0.0.3")
   .addHelpText(
     "after",
     `

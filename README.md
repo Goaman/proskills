@@ -12,10 +12,10 @@ It leverages the `skills` ecosystem (must be installed in your environment) to f
 
 ```bash
 # Recommended installation via NPM
-npm install -g proskills
+npm install -g proskills skills
 ```
 
-_Note: Requires the `skills` CLI to be available in your PATH._
+_Note: `proskills` leverages the `skills` CLI for fetching new skills. Both must be installed._
 
 ---
 
