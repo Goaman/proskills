@@ -11,8 +11,8 @@ It leverages the `skills` ecosystem (must be installed in your environment) to f
 ## 1. Installation
 
 ```bash
-# Recommended installation via NPM
-npm install -g proskills skills
+# Recommended installation via Bun
+bun install -g proskills skills
 ```
 
 _Note: `proskills` leverages the `skills` CLI for fetching new skills. Both must be installed._

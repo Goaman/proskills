@@ -125,7 +125,7 @@ export async function installSkill(source: string) {
   } catch (e: any) {
     if (e.status === 127 || (e.message && e.message.includes("not found"))) {
       throw new Error(
-        `The 'skills' CLI is not found in your PATH. Please install it by running: ${chalk.bold("npm install -g skills")}`
+        `The 'skills' CLI is not found in your PATH. Please install it by running: ${chalk.bold("bun install -g skills")}`
       );
     }
     const message = e instanceof Error ? e.message : String(e);
