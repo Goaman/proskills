@@ -11,7 +11,6 @@ It leverages the `skills` ecosystem (must be installed in your environment) to f
 ## 1. Installation
 
 ```bash
-# Recommended installation via Bun
 bun install -g proskills skills
 ```
 
