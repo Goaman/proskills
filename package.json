@@ -1,0 +1,44 @@
+{
+  "name": "proskills",
+  "version": "0.0.1",
+  "description": "The Canonical Manager for Agent Skill Subsets",
+  "author": "Goaman",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/Goaman/proskills.git"
+  },
+  "keywords": ["ai", "agents", "skills", "profiles", "cli"],
+  "module": "src/index.ts",
+  "type": "module",
+  "bin": {
+    "proskills": "src/index.ts"
+  },
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "lint": "eslint src/**/*.ts",
+    "format": "prettier --write src/**/*.ts README.md"
+  },
+  "files": ["src", "README.md", "package.json"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "chalk": "^5.6.2",
+    "commander": "^14.0.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/bun": "latest",
+    "@types/node": "^25.6.0",
+    "@typescript-eslint/eslint-plugin": "^8.59.0",
+    "@typescript-eslint/parser": "^8.59.0",
+    "eslint": "^10.2.1",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.3",
+    "typescript-eslint": "^8.59.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
